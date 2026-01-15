@@ -141,13 +141,13 @@ flowchart TB
 
 ## Documentation
 
-📄 **[Design Documentation](docs/)** — Detailed subsystem designs (MVCC, WAL, LSM, execution)
+**[Design Documentation](docs/)** — Detailed subsystem designs (MVCC, WAL, LSM, execution)
 
-🧠 **[Design Review Guide](docs/INTERVIEW_GUIDE.md)** — Common discussion points and reasoning
+**[Design Review Guide](docs/INTERVIEW_GUIDE.md)** — Common discussion points and reasoning
 
-⚠️ **[Known Limitations](docs/LIMITATIONS.md)** — Explicit correctness gaps
+**[Known Limitations](docs/LIMITATIONS.md)** — Explicit correctness gaps
 
-⚖️ **[Trade-offs](docs/TRADEOFFS.md)** — Design decision rationale
+**[Trade-offs](docs/TRADEOFFS.md)** — Design decision rationale
 
 ## Quick Start
 
