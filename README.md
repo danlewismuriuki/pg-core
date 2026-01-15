@@ -1,55 +1,46 @@
-Enterprise RDBMS Prototype
+# Enterprise RDBMS Prototype
 
 A single-node relational database prototype demonstrating transaction processing, MVCC visibility rules, and WAL-based crash recovery.
 
-Purpose
+## Purpose
 
-This project exists to demonstrate database internals and systems engineering judgment.
-It prioritizes correctness, failure semantics, and explicit trade-offs over performance or feature completeness.
+This project exists to demonstrate database internals and systems engineering judgment. It prioritizes **correctness**, **failure semantics**, and **trade-off clarity** over performance or feature completeness.
 
-This is not production software.
-It is a learning artifact and an interview demonstration tool.
+**This is not production software.** It is a learning artifact and interview demonstration tool.
 
-What This Demonstrates
+## What This Demonstrates
 
-Snapshot isolation via Postgres-style MVCC (xmin / xmax versioning)
+- **Snapshot isolation** via Postgres-style MVCC (xmin/xmax versioning)
+- **First-committer-wins** conflict detection for concurrent writes
+- **Write-ahead logging** with crash recovery and replay
+- **LSM-Tree storage** with compaction and MVCC garbage collection
+- **Volcano-style query execution** with operator pipelining
+- **B-Tree indexing** with MVCC semantics
 
-First-committer-wins conflict detection for concurrent writers
+## Explicit Non-Goals
 
-Write-ahead logging (WAL) with crash recovery and replay
+- Serializable isolation (allows write skew by design)
+- Distributed replication or consensus
+- Production performance guarantees
+- Online schema migration
+- Adaptive query optimization
 
-LSM-Tree storage with compaction and MVCC-aware garbage collection
+## Architecture Overview
 
-Volcano-style query execution with operator pipelining
-
-B-Tree secondary indexes with MVCC semantics
-
-Explicit Non-Goals
-
-Serializable isolation (write skew is allowed by design)
-
-Distributed replication or consensus
-
-Production performance guarantees
-
-Online schema migration
-
-Adaptive or cost-based query optimization
-
-Architecture Overview
-
-The diagram below shows the end-to-end execution path of a SQL statement, from client request through parsing, transaction management, execution, storage, and durability.
-
+```mermaid
 flowchart TB
-subgraph Clients["Client Layer"]
-WEB[Web Browser]
-CLI[Terminal REPL]
-API[HTTP Client]
-end
+    subgraph Clients["Client Layer"]
+        WEB[Web Browser]
+        CLI[Terminal REPL]
+        API[HTTP Client]
+    end
 
     subgraph Interface["Interface Layer"]
-        EXPRESS["Express Server<br/>:3000<br/>(Stateless - Single Statement)"]
-        REPL["Interactive REPL<br/>(Stateful - Multi Statement)"]
+        EXPRESS["Express Server
+        :3000
+        (Stateless - Single Stmt)"]
+        REPL["Interactive REPL
+        (Stateful - Multi Stmt)"]
     end
 
     subgraph Application["Application Layer"]
@@ -68,9 +59,13 @@ end
     end
 
     subgraph Transaction["Transaction Management"]
-        TXNMGR["TransactionManager<br/>(Allocate xmin / xmax)<br/>Track globalOldestXmin"]
-        MVCC["MVCC Engine<br/>(Visibility Rules)"]
-        CONFLICT["Conflict Detector<br/>(First-Committer-Wins)"]
+        TXNMGR["TransactionManager
+        (Allocate xmin/xmax)
+        Track globalOldestXmin"]
+        MVCC["MVCCEngine
+        (Visibility Rules)"]
+        CONFLICT["ConflictDetector
+        (First-Committer-Wins)"]
     end
 
     subgraph Execution["Query Execution (Volcano Model)"]
@@ -81,24 +76,32 @@ end
     end
 
     subgraph Index["Index Layer"]
-        IDXMGR[IndexManager]
         BTREE[B-Tree Indexes]
+        IDXMGR[IndexManager]
     end
 
-    subgraph Storage["Storage Engine (LSM-Tree)"]
+    subgraph Storage["Storage Engine - LSM-Tree"]
         direction TB
-        MEMTABLE["MemTable<br/>(Skip List, 4MB)<br/>Write Backpressure"]
-        WAL["Write-Ahead Log<br/>(Commit + fsync)"]
-        SSTABLE["SSTables<br/>Immutable, Sorted"]
-        COMPACT["Compactor<br/>Background Merge<br/>Uses globalOldestXmin"]
-        CKPT["Checkpointer<br/>Flush + Manifest Update"]
+        MEMTABLE["MemTable
+        Skip List - 4MB
+        + Backpressure"]
+        WAL["Write-Ahead Log
+        COMMIT + fsync"]
+        SSTABLE["SSTables
+        Immutable Sorted"]
+        COMPACT["Compactor
+        Background Merge
+        Uses globalOldestXmin"]
+        CKPT["Checkpointer
+        Flush → Update Manifest"]
     end
 
     subgraph FileSystem["File System"]
         WALFILES[data/wal/*.log]
         SSTFILES[data/sstables/*.sst]
         IDXFILES[data/indexes/*.btree]
-        MANIFEST["manifest.json<br/>+ checkpointLSN"]
+        MANIFEST[manifest.json
+        + checkpointLSN]
     end
 
     Clients --> Interface
@@ -111,48 +114,60 @@ end
     Index --> Storage
     Storage --> FileSystem
 
-    QSVC -.->|Record metrics| METRICS
-    EXECUTOR -.->|Slow query logs| METRICS
-    MEMTABLE -.->|Throttle writes| TXNMGR
-    CKPT -.->|Flush trigger| MEMTABLE
-    CKPT -.->|Persist LSN| MANIFEST
-    COMPACT -.->|Query xmin| TXNMGR
+    QSVC -.->|"Record metrics"| METRICS
+    EXECUTOR -.->|"Slow query logs"| METRICS
+    MEMTABLE -.->|"Throttle writes"| TXNMGR
+    CKPT -.->|"Periodic flush"| MEMTABLE
+    CKPT -.->|"Update LSN"| MANIFEST
+    COMPACT -.->|"Query xmin"| TXNMGR
 
-Key Design Decisions
-Decision Rationale Trade-off
-Snapshot isolation over serializable Simpler MVCC, highlights core mechanics Allows write skew
-Indexes not WAL-logged Simplifies recovery logic Slower index rebuild on crash
-LSM-Tree over heap B-Tree Write-optimized, modern storage model Read amplification
-Single-threaded execution Correctness-first implementation No parallelism
-No commit-status table Prototype simplification Visibility edge approximations
-Documentation
+    style Storage fill:#e1f5ff
+    style Transaction fill:#fff4e1
+    style SQL fill:#f0e1ff
+    style Execution fill:#e8f5e9
+    style METRICS fill:#ffe8e8
+    style CKPT fill:#fff9c4
+```
 
-📄 Design Documentation — docs/
-Subsystem-level designs (MVCC, WAL, LSM, indexing, execution)
+## Key Design Decisions
 
-⚠️ Known Limitations — docs/LIMITATIONS.md
+| Decision                             | Rationale                                 | Trade-off                 |
+| ------------------------------------ | ----------------------------------------- | ------------------------- |
+| Snapshot isolation over serializable | Simpler MVCC, demonstrates core mechanics | Allows write skew         |
+| Indexes not WAL-logged               | Simpler recovery logic                    | Slower recovery time      |
+| LSM-Tree over B-Tree heap            | Write-optimized, modern storage           | Read amplification        |
+| Single-threaded execution            | Correctness over performance              | No parallelism            |
+| No commit-status table               | Prototype simplification                  | Visibility approximations |
 
-⚖️ Trade-offs — docs/TRADEOFFS.md
+## Documentation
 
-Quick Start
+📄 **[Design Documentation](docs/)** - Detailed subsystem designs
 
+🎯 **[Interview Guide](docs/INTERVIEW_GUIDE.md)** - Common questions & answers
+
+⚠️ **[Known Limitations](docs/LIMITATIONS.md)** - Explicit correctness gaps
+
+⚖️ **[Trade-offs](docs/TRADEOFFS.md)** - Design decision rationale
+
+## Quick Start
+
+```bash
 # Install dependencies
-
 npm install
 
-# Run all tests
-
+# Run tests
 npm test
 
-# Start interactive REPL
-
+# Start REPL
 npm start
 
 # Start REST API
-
 npm run server
+```
 
-Example Session
+## Example Session
+
+```sql
 db> BEGIN;
 Transaction started (xmin=100)
 
@@ -165,41 +180,42 @@ db> INSERT INTO users VALUES (1, 'Alice', 30);
 db> CREATE INDEX idx_age ON users(age);
 Index created
 
-db> SELECT \* FROM users WHERE age > 25;
+db> SELECT * FROM users WHERE age > 25;
 +----+-------+-----+
-| id | name | age |
+| id | name  | age |
 +----+-------+-----+
-| 1 | Alice | 30 |
+| 1  | Alice | 30  |
 +----+-------+-----+
 
 db> COMMIT;
 Transaction committed
+```
 
-Testing
-npm test # All tests
-npm run test:unit # MVCC, WAL, storage
-npm run test:integration # Recovery and concurrency
-npm run test:coverage # Coverage report
+## Testing
 
-Project Status
+```bash
+npm test                    # All tests
+npm run test:unit           # Unit tests (MVCC, WAL, storage)
+npm run test:integration    # Integration tests (recovery, concurrency)
+npm run test:coverage       # Coverage report
+```
 
-Current: Phase 2 complete (WAL + Crash Recovery)
-Next: Phase 3 (LSM-Tree compaction)
+## Project Status
 
-Author Notes
+**Current:** Phase 2 complete (WAL + Recovery)  
+**Next:** Phase 3 (LSM-Tree compaction)
+
+## Author Notes
 
 This project demonstrates senior-level understanding of:
 
-Transaction isolation and MVCC visibility rules
+- Transaction isolation semantics and MVCC visibility rules
+- Write-ahead logging and crash recovery protocols
+- Storage engine internals and compaction strategies
+- Query optimization and execution models
 
-Write-ahead logging and crash recovery protocols
+It intentionally omits features that would obscure the core algorithms (e.g., distributed replication, adaptive optimization, connection pooling).
 
-Storage engine internals and compaction strategies
+## License
 
-Query execution models and operator pipelines
-
-Features that would obscure core algorithms (e.g. distributed consensus, adaptive optimization, connection pooling) are intentionally omitted.
-
-License
-
-MIT — Educational purposes
+MIT - Educational purposes
