@@ -1,2 +1,12 @@
 # Ignore interview prep
 docs/INTERVIEW_GUIDE.md
+node_modules/
+dist/
+*.log
+.DS_Store
+coverage/
+.env
+*.js
+*.js.map
+*.d.ts
+!jest.config.js
