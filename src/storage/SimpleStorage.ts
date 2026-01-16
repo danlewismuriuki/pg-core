@@ -4,11 +4,34 @@ import { MVCCEngine } from '../mvcc/MVCCEngine';
 export class SimpleStorage {
   private data = new Map<string, VersionedRow[]>();
 
-  insert(row: VersionedRow): void {
+//   insert(row: VersionedRow): void {
+//     if (!this.data.has(row.key)) {
+//       this.data.set(row.key, []);
+//     }
+//     this.data.get(row.key)!.push(row);
+//   }
+insert(row: VersionedRow): void {
     if (!this.data.has(row.key)) {
       this.data.set(row.key, []);
     }
-    this.data.get(row.key)!.push(row);
+    
+    const versions = this.data.get(row.key)!;
+    
+    // Check if this row is updating an existing version
+    // A tombstone (xmax !== null) should replace the version with same xmin and xmax:null
+    if (row.xmax !== null) {
+      // Find and replace the version this tombstone is marking as deleted
+      const index = versions.findIndex(v => 
+        v.xmin === row.xmin && v.xmax === null
+      );
+      if (index !== -1) {
+        versions[index] = row;  // REPLACE old version with tombstone
+        return;
+      }
+    }
+    
+    // Otherwise, append new version
+    versions.push(row);
   }
 
   getAllVersions(key: string): VersionedRow[] {
