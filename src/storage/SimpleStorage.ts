@@ -4,12 +4,6 @@ import { MVCCEngine } from '../mvcc/MVCCEngine';
 export class SimpleStorage {
   private data = new Map<string, VersionedRow[]>();
 
-//   insert(row: VersionedRow): void {
-//     if (!this.data.has(row.key)) {
-//       this.data.set(row.key, []);
-//     }
-//     this.data.get(row.key)!.push(row);
-//   }
 insert(row: VersionedRow): void {
     if (!this.data.has(row.key)) {
       this.data.set(row.key, []);
@@ -25,7 +19,7 @@ insert(row: VersionedRow): void {
         v.xmin === row.xmin && v.xmax === null
       );
       if (index !== -1) {
-        versions[index] = row;  // REPLACE old version with tombstone
+        versions[index] = row;
         return;
       }
     }

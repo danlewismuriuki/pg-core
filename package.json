@@ -9,10 +9,23 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
+    "start:info": "LOG_LEVEL=info node dist/index.js",
+    "start:debug": "LOG_LEVEL=debug node dist/index.js",
+    "start:trace": "LOG_LEVEL=trace node dist/index.js",
     "dev": "ts-node src/index.ts",
-    "test": "jest",
+    "dev:info": "LOG_LEVEL=info ts-node src/index.ts",
+    "dev:debug": "LOG_LEVEL=debug ts-node src/index.ts",
+    "dev:trace": "LOG_LEVEL=trace ts-node src/index.ts",
+    "dev:quiet": "LOG_LEVEL=warn ts-node src/index.ts",
+    "test": "LOG_LEVEL=warn jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "test:debug": "LOG_TESTS=true LOG_LEVEL_TEST=debug jest",
+    "test:trace": "LOG_TESTS=true LOG_LEVEL_TEST=trace jest",
+    "test:verbose": "jest --verbose",
+    "test:quiet": "LOG_TESTS=false jest",
+    "clean": "rm -rf dist coverage",
+    "clean:all": "rm -rf dist coverage node_modules"
   },
   "keywords": [],
   "author": "",
@@ -24,5 +37,9 @@
     "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "pino": "^10.2.0",
+    "pino-pretty": "^11.3.0"
   }
 }
