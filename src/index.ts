@@ -1,68 +1,35 @@
-// import { DatabaseService } from './db/DatabaseService';
-
-// console.log("=".repeat(80));
-// console.log("ENTERPRISE RDBMS - PHASE 1: MVCC + SNAPSHOT ISOLATION");
-// console.log("=".repeat(80));
-
-// const db = new DatabaseService();
-
-// // Test 1: Basic snapshot isolation
-// console.log("\n--- Test 1: Snapshot Isolation ---");
-// const t1 = db.begin();
-// db.insert(t1, "user_1", { id: 1, name: "Alice", age: 25 });
-// db.insert(t1, "user_2", { id: 2, name: "Bob", age: 30 });
-// db.commit(t1);
-
-// const t2 = db.begin();
-// console.log("T2 sees:", db.select(t2));
-// db.commit(t2);
-
-// // Test 2: Write-write conflict
-// console.log("\n--- Test 2: First-Committer-Wins Conflict ---");
-// const t3 = db.begin();
-// const t4 = db.begin();
-
-// db.update(t3, "user_1", { id: 1, name: "Alice", age: 26 });
-// db.update(t4, "user_1", { id: 1, name: "Alice", age: 27 });
-
-// db.commit(t3);
-
-// try {
-//   db.commit(t4);
-// } catch (e: any) {
-//   console.log(`✓ T4 correctly aborted: ${e.message}`);
-// }
-
-// // Test 3: Aborted transaction visibility
-// console.log("\n--- Test 3: Aborted Transactions Invisible ---");
-// const t5 = db.begin();
-// db.insert(t5, "user_3", { id: 3, name: "Charlie", age: 35 });
-// db.abort(t5);
-
-// const t6 = db.begin();
-// const results = db.select(t6, ["user_3"]);
-// console.log(`T6 sees user_3: ${results.length === 0 ? "NO (correct)" : "YES (wrong)"}`);
-// db.commit(t6);
-
-// console.log("\n" + "=".repeat(80));
-// console.log("✅ PHASE 1 COMPLETE");
-// console.log("=".repeat(80));
-
-
-
-// src/index.ts
+// src/index.ts - FIXED VERSION
 import { DatabaseService } from './db/DatabaseService';
 import { logger, setLogLevel } from './utils/logger';
+import { startMetricsServer } from './monitoring/metrics-server';
 
 // Set log level based on environment
 const logLevel = process.env.LOG_LEVEL || 'info';
 setLogLevel(logLevel as any);
 
+// Start metrics server FIRST
+const METRICS_PORT = 9090;
+try {
+  startMetricsServer(METRICS_PORT);
+  logger.info(`Metrics server started on port ${METRICS_PORT}`);
+  logger.info(`Access metrics at: http://localhost:${METRICS_PORT}/metrics`);
+  logger.info(`Health check at: http://localhost:${METRICS_PORT}/health`);
+} catch (error) {
+  // FIXED: Handle unknown error type
+  if (error instanceof Error) {
+    logger.error({ error: error.message }, 'Failed to start metrics server');
+  } else {
+    logger.error({ error: String(error) }, 'Failed to start metrics server');
+  }
+}
+
 // Log startup banner
-logger.info({ 
+logger.info({
   version: '1.0.0',
   logLevel,
-  action: 'startup'
+  action: 'startup',
+  metricsEnabled: true,
+  metricsPort: METRICS_PORT
 }, "=".repeat(80));
 logger.info("ENTERPRISE RDBMS - PHASE 1: MVCC + SNAPSHOT ISOLATION");
 logger.info("=".repeat(80));
@@ -162,7 +129,8 @@ logger.info({ txId: t6.id }, 'T6 committed');
 // Summary
 logger.info({ 
   testsRun: 3,
-  status: 'completed'
+  status: 'completed',
+  metricsUrl: `http://localhost:${METRICS_PORT}/metrics`
 }, "\n" + "=".repeat(80));
 logger.info("✅ PHASE 1 COMPLETE");
 logger.info("=".repeat(80));
@@ -171,5 +139,11 @@ logger.info("=".repeat(80));
 logger.info({
   action: 'shutdown',
   memoryUsage: process.memoryUsage(),
-  uptime: process.uptime()
+  uptime: process.uptime(),
+  metricsCollected: true
 }, 'Test suite completed successfully');
+
+// Give time to check metrics before exit
+setTimeout(() => {
+  logger.info('Press Ctrl+C to exit');
+}, 1000);

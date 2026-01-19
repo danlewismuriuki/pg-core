@@ -1,184 +1,4 @@
-// import { TransactionManager } from '../transaction/TransactionManager';
-// import { CommitTable } from '../transaction/CommitTable';
-// import { MVCCEngine } from '../mvcc/MVCCEngine';
-// import { SimpleStorage } from '../storage/SimpleStorage';
-// import { ConflictDetector } from '../mvcc/ConflictDetector';
-// import { Transaction } from '../transaction/Transaction';
-// import { VersionedRow } from '../mvcc/VersionedRow';
-
-// export class DatabaseService {
-//   private txnManager = new TransactionManager();
-//   private commitTable = new CommitTable();
-//   private mvcc = new MVCCEngine(this.commitTable);
-//   private storage = new SimpleStorage();
-//   private conflictDetector = new ConflictDetector(
-//     this.storage,
-//     this.commitTable
-//   );
-
-//   /** Begin a new transaction */
-//   begin(): Transaction {
-//     const txn = this.txnManager.begin();
-//     console.log(`[TXN ${txn.id}] BEGIN (snapshot: ${txn.snapshot.xmin}..${txn.snapshot.xmax})`);
-//     return txn;
-//   }
-
-//   /** Insert a new row */
-//   insert(txn: Transaction, key: string, data: any): void {
-//     const row: VersionedRow = {
-//       key,
-//       data,
-//       xmin: txn.id,
-//       xmax: null,
-//     };
-//     txn.addWrite(key, row);
-//     console.log(`[TXN ${txn.id}] INSERT ${key} → xmin=${txn.id}`);
-//   }
-
-//   /** Update an existing row */
-//   update(txn: Transaction, key: string, data: any): void {
-//     const versions = this.storage.getAllVersions(key);
-  
-//     if (versions.length === 0) {
-//       throw new Error(`Key '${key}' not found`);
-//     }
-  
-//     const visible = versions.find(row => this.mvcc.isVisible(row, txn.snapshot));
-//     if (!visible) {
-//       throw new Error(`Key '${key}' not visible in snapshot`);
-//     }
-  
-//     // 1. Mark old version as deleted (create tombstone)
-//     const oldVersionTombstone: VersionedRow = {
-//       ...visible,
-//       xmax: txn.id,  // Mark old version as deleted by this transaction
-//     };
-  
-//     // 2. Create new version with merged data
-//     const newRow: VersionedRow = {
-//       key,
-//       data: { ...visible.data, ...data },  // Merge ALL fields
-//       xmin: txn.id,
-//       xmax: null,
-//     };
-  
-//     // Add BOTH to transaction writes
-//     txn.addWrite(key, oldVersionTombstone);
-//     txn.addWrite(key, newRow);
-    
-//     console.log(`[TXN ${txn.id}] UPDATE ${key} → old xmax=${txn.id}, new xmin=${txn.id}`);
-//   }
-
-//   /** Delete a row */
-//   delete(txn: Transaction, key: string): void {
-//     const versions = this.storage.getAllVersions(key);
-  
-//     if (versions.length === 0) {
-//       throw new Error(`Key '${key}' not found`);
-//     }
-  
-//     const visible = versions.find(row => this.mvcc.isVisible(row, txn.snapshot));
-//     if (!visible) {
-//       throw new Error(`Key '${key}' not visible in snapshot`);
-//     }
-  
-//     // ✅ CORRECT: Keep original xmin, set xmax to deleter
-//     const tombstone: VersionedRow = {
-//       key,
-//       data: visible.data,
-//       xmin: visible.xmin,  // KEEP original creator
-//       xmax: txn.id,        // Mark as deleted by this transaction
-//     };
-  
-//     txn.addWrite(key, tombstone);
-//     console.log(`[TXN ${txn.id}] DELETE ${key} → tombstone xmin=${tombstone.xmin}, xmax=${tombstone.xmax}`);
-//   }
-
-//   /** Select visible rows for a transaction */
-//   select(txn: Transaction, keys?: string[]): any[] {
-//     const keysToScan = keys || this.storage.getAllKeys();
-//     const results: any[] = [];
-
-//     // DEBUG LOGGING - Add this to see what's happening
-//     console.log(`[TXN ${txn.id}] SELECT - Checking ${keysToScan.length} keys`);
-
-//     for (const key of keysToScan) {
-//       txn.addRead(key);
-//       const versions = this.storage.getAllVersions(key);
-
-//       // DEBUG: Log all versions for this key
-//       if (versions.length > 0) {
-//         console.log(`[TXN ${txn.id}] Key '${key}' has ${versions.length} versions:`);
-//         versions.forEach((row, i) => {
-//           const visible = this.mvcc.isVisible(row, txn.snapshot);
-//           console.log(`  V${i}: xmin=${row.xmin}, xmax=${row.xmax}, data=${JSON.stringify(row.data)}, visible=${visible}`);
-//         });
-//       }
-
-//       // Only pick one visible version per key
-//       const visible = versions.find((row) => this.mvcc.isVisible(row, txn.snapshot));
-//       if (visible) {
-//         results.push({ key: visible.key, ...visible.data });
-//         console.log(`[TXN ${txn.id}] SELECT picked version with xmin=${visible.xmin}, data=${JSON.stringify(visible.data)}`);
-//       }
-//     }
-
-//     console.log(`[TXN ${txn.id}] SELECT returning ${results.length} rows`);
-//     return results;
-//   }
-
-//   /** Commit transaction with conflict detection */
-//   commit(txn: Transaction): void {
-//     const conflict = this.conflictDetector.detectConflict(txn);
-//     if (conflict) {
-//       console.log(`[TXN ${txn.id}] ABORT - ${conflict}`);
-//       this.abort(txn);
-//       throw new Error(conflict);
-//     }
-
-//     // Apply all writes (now arrays per key)
-//     const writes = txn.getWrites();
-//     let totalWrites = 0;
-    
-//     for (const rows of writes.values()) {
-//       totalWrites += rows.length;
-//     }
-    
-//     console.log(`[TXN ${txn.id}] COMMIT - Applying ${totalWrites} writes across ${writes.size} keys`);
-    
-//     for (const [key, rows] of writes) {
-//       for (const row of rows) {
-//         console.log(`  Writing: key=${row.key}, xmin=${row.xmin}, xmax=${row.xmax}`);
-//         this.storage.insert(row);
-//       }
-//     }
-
-//     this.commitTable.markCommitted(txn.id);
-//     this.txnManager.commit(txn);
-
-//     console.log(`[TXN ${txn.id}] COMMIT completed`);
-
-//     this.garbageCollect();
-//   }
-
-//   /** Abort a transaction */
-//   abort(txn: Transaction): void {
-//     this.commitTable.markAborted(txn.id);
-//     this.txnManager.abort(txn);
-//     console.log(`[TXN ${txn.id}] ABORT`);
-//   }
-
-//   /** Garbage collect old row versions */
-//   garbageCollect(): void {
-//     const oldestXmin = this.txnManager.getGlobalOldestXmin();
-//     const collected = this.storage.garbageCollect(oldestXmin, this.mvcc);
-//     if (collected > 0) {
-//       console.log(`[GC] Collected ${collected} old versions (oldestXmin=${oldestXmin})`);
-//     }
-//   }
-// }
-
-
+// Add at the top of DatabaseService.ts
 import { TransactionManager } from '../transaction/TransactionManager';
 import { CommitTable } from '../transaction/CommitTable';
 import { MVCCEngine } from '../mvcc/MVCCEngine';
@@ -187,6 +7,7 @@ import { ConflictDetector } from '../mvcc/ConflictDetector';
 import { Transaction } from '../transaction/Transaction';
 import { VersionedRow } from '../mvcc/VersionedRow';
 import { logger, dbLogger } from '../utils/logger';
+import { dbMetrics } from '../monitoring/metrics'
 
 export class DatabaseService {
   private txnManager = new TransactionManager();
@@ -205,6 +26,10 @@ export class DatabaseService {
   begin(): Transaction {
     const txn = this.txnManager.begin();
     
+    // METRICS: Track transaction
+    dbMetrics.transactionsTotal.inc();
+    dbMetrics.activeTransactions.inc();
+    
     // CHANGED: Use structured logging
     this.log.info({
       txId: txn.id,
@@ -218,6 +43,8 @@ export class DatabaseService {
 
   /** Insert a new row */
   insert(txn: Transaction, key: string, data: any): void {
+    const startTime = Date.now(); // <-- ADD THIS
+    
     const row: VersionedRow = {
       key,
       data,
@@ -225,6 +52,10 @@ export class DatabaseService {
       xmax: null,
     };
     txn.addWrite(key, row);
+    
+    // METRICS: Track insert time
+    const duration = (Date.now() - startTime) / 1000;
+    dbMetrics.queryTime.observe({ operation: 'INSERT' }, duration);
     
     // CHANGED: Add structured logging
     this.log.info({
@@ -238,6 +69,8 @@ export class DatabaseService {
 
   /** Update an existing row */
   update(txn: Transaction, key: string, data: any): void {
+    const startTime = Date.now(); // <-- ADD THIS
+  
     const versions = this.storage.getAllVersions(key);
   
     if (versions.length === 0) {
@@ -273,6 +106,10 @@ export class DatabaseService {
     txn.addWrite(key, oldVersionTombstone);
     txn.addWrite(key, newRow);
     
+    // METRICS: Track update time
+    const duration = (Date.now() - startTime) / 1000;
+    dbMetrics.queryTime.observe({ operation: 'UPDATE' }, duration);
+    
     // CHANGED: Log update details
     this.log.info({
       txId: txn.id,
@@ -286,6 +123,8 @@ export class DatabaseService {
 
   /** Delete a row */
   delete(txn: Transaction, key: string): void {
+    const startTime = Date.now(); // <-- ADD THIS
+  
     const versions = this.storage.getAllVersions(key);
   
     if (versions.length === 0) {
@@ -312,6 +151,10 @@ export class DatabaseService {
     };
   
     txn.addWrite(key, tombstone);
+    
+    // METRICS: Track delete time
+    const duration = (Date.now() - startTime) / 1000;
+    dbMetrics.queryTime.observe({ operation: 'DELETE' }, duration);
     
     // CHANGED: Log delete operation
     this.log.info({
@@ -375,6 +218,9 @@ export class DatabaseService {
 
     const duration = Date.now() - startTime;
     
+    // METRICS: Track select time
+    dbMetrics.queryTime.observe({ operation: 'SELECT' }, duration / 1000);
+    
     // CHANGED: Info log with performance metrics
     this.log.info({
       txId: txn.id,
@@ -400,6 +246,11 @@ export class DatabaseService {
     const conflict = this.conflictDetector.detectConflict(txn);
     if (conflict) {
       const duration = Date.now() - startTime;
+      
+      // METRICS: Track aborted transaction
+      dbMetrics.transactionsAborted.inc();
+      dbMetrics.activeTransactions.dec();
+      
       this.log.warn({
         txId: txn.id,
         conflict,
@@ -454,6 +305,11 @@ export class DatabaseService {
 
     const duration = Date.now() - startTime;
     
+    // METRICS: Track successful commit
+    dbMetrics.transactionsCommitted.inc();
+    dbMetrics.activeTransactions.dec();
+    dbMetrics.queryTime.observe({ operation: 'COMMIT' }, duration / 1000);
+    
     // CHANGED: Final commit log
     this.log.info({
       txId: txn.id,
@@ -468,6 +324,10 @@ export class DatabaseService {
   /** Abort a transaction */
   abort(txn: Transaction): void {
     const writes = txn.getWrites();
+    
+    // METRICS: Track aborted transaction
+    dbMetrics.transactionsAborted.inc();
+    dbMetrics.activeTransactions.dec();
     
     this.log.warn({
       txId: txn.id,
@@ -507,5 +367,9 @@ export class DatabaseService {
         action: 'gc_noop'
       }, `Garbage collection - nothing to collect`);
     }
+    
+    // METRICS: Update memory usage
+    const memory = process.memoryUsage();
+    dbMetrics.memoryUsage.set(memory.heapUsed);
   }
 }
